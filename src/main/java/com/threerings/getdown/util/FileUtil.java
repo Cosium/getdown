@@ -114,6 +114,7 @@ public class FileUtil
         } finally {
             StreamUtil.close(jarOutputStream);
             StreamUtil.close(extractedJarFileOs);
+            StreamUtil.close(packedJarIs);
         }
     }
 }
