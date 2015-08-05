@@ -18,7 +18,6 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.PrintStream;
 import java.io.RandomAccessFile;
-import java.io.UnsupportedEncodingException;
 import java.lang.reflect.Method;
 import java.net.MalformedURLException;
 import java.net.URL;
@@ -169,6 +168,9 @@ public class Application
 
         /** The path (relative to the appdir) to a single play again image. */
         public String playAgainImage;
+
+        /** Whether window decorations are hidden for the UI. */
+        public boolean hideDecorations;
 
         /** The global percentages for each step. A step may have more than one, and
          * the lowest reasonable one is used if a step is revisited. */
@@ -533,10 +535,6 @@ public class Application
         String vstr = (String)cdata.get("version");
         if (vstr != null) _version = parseLong(vstr, "m.invalid_version");
 
-        // check to see if we require a particular max JVM version and have a supplied JVM
-        vstr = (String)cdata.get("java_max_version");
-        if (vstr != null) _javaMaxVersion = (int)parseLong(vstr, "m.invalid_java_version");
-
         // if we are a versioned deployment, create a versioned appbase
         try {
             _vappbase = (_version < 0) ? new URL(_appbase) : createVAppBase(_version);
@@ -564,13 +562,23 @@ public class Application
             throw new IOException("m.missing_class");
         }
 
+        // check to see if we're using a custom java.version property and regex
+        vstr = (String)cdata.get("java_version_prop");
+        if (vstr != null) _javaVersionProp = vstr;
+        vstr = (String)cdata.get("java_version_regex");
+        if (vstr != null) _javaVersionRegex = vstr;
+
         // check to see if we require a particular JVM version and have a supplied JVM
         vstr = (String)cdata.get("java_version");
-        if (vstr != null) _javaMinVersion = (int)parseLong(vstr, "m.invalid_java_version");
+        if (vstr != null) _javaMinVersion = parseLong(vstr, "m.invalid_java_version");
         // we support java_min_version as an alias of java_version; it better expresses the check
         // that's going on and better mirrors java_max_version
         vstr = (String)cdata.get("java_min_version");
-        if (vstr != null) _javaMinVersion = (int)parseLong(vstr, "m.invalid_java_version");
+        if (vstr != null) _javaMinVersion = parseLong(vstr, "m.invalid_java_version");
+
+        // check to see if we require a particular max JVM version and have a supplied JVM
+        vstr = (String)cdata.get("java_max_version");
+        if (vstr != null) _javaMaxVersion = parseLong(vstr, "m.invalid_java_version");
 
         // check to see if we require a particular JVM version and have a supplied JVM
         vstr = (String)cdata.get("java_exact_version_required");
@@ -685,6 +693,7 @@ public class Application
         ui.status = parseRect(cdata, "ui.status", ui.status);
         ui.statusText = parseColor(cdata, "ui.status_text", ui.statusText);
         ui.textShadow = parseColor(cdata, "ui.text_shadow", ui.textShadow);
+        ui.hideDecorations = Boolean.parseBoolean((String)cdata.get("ui.hide_decorations"));
         ui.backgroundImage = (String)cdata.get("ui.background_image");
         if (ui.backgroundImage == null) { // support legacy format
             ui.backgroundImage = (String)cdata.get("ui.background");
@@ -782,46 +791,55 @@ public class Application
     public boolean haveValidJavaVersion ()
     {
         // if we're doing no version checking, then yay!
-        if (_javaMinVersion == 0 && _javaMaxVersion == 0) {
-            return true;
-        }
+        if (_javaMinVersion == 0 && _javaMaxVersion == 0) return true;
 
-        // if we have a fully unpacked VM assume it is the right version (TODO: don't)
-        Resource vmjar = getJavaVMResource();
-        if (vmjar != null && vmjar.isMarkedValid()) {
-            return true;
-        }
+        try {
+            // parse the version out of the java.version (or custom) system property
+            long version = SysProps.parseJavaVersion(_javaVersionProp, _javaVersionRegex);
 
-        // parse the version out of the java.version system property
-        String verstr = System.getProperty("java.version");
-        Matcher m = Pattern.compile("(\\d+)\\.(\\d+)\\.(\\d+)(_\\d+)?.*").matcher(verstr);
-        if (!m.matches()) {
+            log.info("Checking Java version", "current", version,
+                     "wantMin", _javaMinVersion, "wantMax", _javaMaxVersion);
+
+            // if we have an unpacked VM, check the 'release' file for its version
+            Resource vmjar = getJavaVMResource();
+            if (vmjar != null && vmjar.isMarkedValid()) {
+                File vmdir = new File(_appdir, LaunchUtil.LOCAL_JAVA_DIR);
+                File relfile = new File(vmdir, "release");
+                if (!relfile.exists()) {
+                    log.warning("Unpacked JVM missing 'release' file. Assuming valid version.");
+                    return true;
+                }
+
+                long vmvers = VersionUtil.readReleaseVersion(relfile, _javaVersionRegex);
+                if (vmvers == 0L) {
+                    log.warning("Unable to read version from 'release' file. Assuming valid.");
+                    return true;
+                }
+
+                version = vmvers;
+                log.info("Checking version of unpacked JVM [vers=" + version + "].");
+            }
+
+            if (_javaExactVersionRequired) {
+                if (version == _javaMinVersion) return true;
+                else {
+                    log.warning("An exact Java VM version is required.", "current", version,
+                                "required", _javaMinVersion);
+                    return false;
+                }
+            }
+
+            boolean minVersionOK = (_javaMinVersion == 0) || (version >= _javaMinVersion);
+            boolean maxVersionOK = (_javaMaxVersion == 0) || (version <= _javaMaxVersion);
+            return minVersionOK && maxVersionOK;
+
+        } catch (RuntimeException re) {
             // if we can't parse the java version we're in weird land and should probably just try
             // our luck with what we've got rather than try to download a new jvm
             log.warning("Unable to parse VM version, hoping for the best",
-                        "version", verstr, "needed", _javaMinVersion);
+                        "error", re, "needed", _javaMinVersion);
             return true;
         }
-
-        int major = Integer.parseInt(m.group(1));
-        int minor = Integer.parseInt(m.group(2));
-        int revis = Integer.parseInt(m.group(3));
-        int patch = m.group(4) == null ? 0 : Integer.parseInt(m.group(4).substring(1));
-        int version = patch + 100 * (revis + 100 * (minor + 100 * major));
-
-        if (_javaExactVersionRequired) {
-            if (version == _javaMinVersion) {
-                return true;
-            } else {
-                log.warning("An exact Java VM version is required.", "current", version,
-                            "required", _javaMinVersion);
-                return false;
-            }
-        }
-
-        boolean minVersionOK = (_javaMinVersion == 0) || (version >= _javaMinVersion);
-        boolean maxVersionOK = (_javaMaxVersion == 0) || (version <= _javaMaxVersion);
-        return minVersionOK && maxVersionOK;
     }
 
     /**
@@ -1729,7 +1747,9 @@ public class Application
     protected long _trackingStart;
     protected int _trackingId;
 
-    protected int _javaMinVersion, _javaMaxVersion;
+    protected String _javaVersionProp = "java.version";
+    protected String _javaVersionRegex = "(\\d+)\\.(\\d+)\\.(\\d+)(_\\d+)?.*";
+    protected long _javaMinVersion, _javaMaxVersion;
     protected boolean _javaExactVersionRequired;
     protected String _javaLocation;
 

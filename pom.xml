@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+<project xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="http://maven.apache.org/POM/4.0.0">
   <modelVersion>4.0.0</modelVersion>
+  <parent>
+    <groupId>org.sonatype.oss</groupId>
+    <artifactId>oss-parent</artifactId>
+    <version>7</version>
+  </parent>
+
   <groupId>com.threerings</groupId>
   <artifactId>getdown</artifactId>
   <packaging>jar</packaging>
@@ -11,12 +17,6 @@
   <issueManagement>
     <url>https://github.com/threerings/getdown/issues</url>
   </issueManagement>
-
-  <parent>
-    <groupId>org.sonatype.oss</groupId>
-    <artifactId>oss-parent</artifactId>
-    <version>7</version>
-  </parent>
 
   <licenses>
     <license>
@@ -194,44 +194,61 @@
             <manifest>
               <mainClass>com.threerings.getdown.launcher.GetdownApp</mainClass>
             </manifest>
+            <manifestEntries>
+              <Permissions>all-permissions</Permissions>
+              <Application-Name>Getdown</Application-Name>
+              <Codebase>*</Codebase>
+              <Application-Library-Allowable-Codebase>*</Application-Library-Allowable-Codebase>
+              <Caller-Allowable-Codebase>*</Caller-Allowable-Codebase>
+            </manifestEntries>
           </archive>
         </configuration>
       </plugin>
     </plugins>
-
-    <pluginManagement>
-      <plugins>
-        <plugin>
-          <!-- Tell m2eclipse to ignore the enforcer plugin from our parent. Otherwise it warns
-               about not being able to run it. -->
-          <groupId>org.eclipse.m2e</groupId>
-          <artifactId>lifecycle-mapping</artifactId>
-          <version>1.0.0</version>
-          <configuration>
-            <lifecycleMappingMetadata>
-              <pluginExecutions>
-                <pluginExecution>
-                  <pluginExecutionFilter>
-                    <groupId>org.apache.maven.plugins</groupId>
-                    <artifactId>maven-enforcer-plugin</artifactId>
-                    <versionRange>[1.0,)</versionRange>
-                    <goals>
-                      <goal>enforce</goal>
-                    </goals>
-                  </pluginExecutionFilter>
-                  <action>
-                    <ignore />
-                  </action>
-                </pluginExecution>
-              </pluginExecutions>
-            </lifecycleMappingMetadata>
-          </configuration>
-        </plugin>
-      </plugins>
-    </pluginManagement>
   </build>
 
   <profiles>
+    <profile>
+      <id>eclipse</id>
+      <activation>
+        <property>
+          <name>m2e.version</name>
+        </property>
+      </activation>
+      <build>
+        <pluginManagement>
+          <plugins>
+            <plugin>
+              <!-- Tell m2eclipse to ignore the enforcer plugin from our parent. Otherwise it warns
+                   about not being able to run it. -->
+              <groupId>org.eclipse.m2e</groupId>
+              <artifactId>lifecycle-mapping</artifactId>
+              <version>1.0.0</version>
+              <configuration>
+                <lifecycleMappingMetadata>
+                  <pluginExecutions>
+                    <pluginExecution>
+                      <pluginExecutionFilter>
+                        <groupId>org.apache.maven.plugins</groupId>
+                        <artifactId>maven-enforcer-plugin</artifactId>
+                        <versionRange>[1.0,)</versionRange>
+                        <goals>
+                          <goal>enforce</goal>
+                        </goals>
+                      </pluginExecutionFilter>
+                      <action>
+                        <ignore />
+                      </action>
+                    </pluginExecution>
+                  </pluginExecutions>
+                </lifecycleMappingMetadata>
+              </configuration>
+            </plugin>
+          </plugins>
+        </pluginManagement>
+      </build>
+    </profile>
+
     <profile>
       <id>release-sign-artifacts</id>
       <activation>
@@ -308,5 +325,23 @@
         <plugin.jar.path>/usr/share/icedtea-web/plugin.jar</plugin.jar.path>
       </properties>
     </profile>
+
+    <!-- For deploying to a local place -->
+    <profile>
+      <id>deploy-local</id>
+      <distributionManagement>
+        <repository>
+          <id>deploy-local-dir</id>
+          <name>Local Maven repository</name>
+          <url>file://${deploy.local.dir}</url>
+        </repository>
+        <snapshotRepository>
+          <id>deploy-local-dir</id>
+          <name>Local Maven repository</name>
+          <url>file://${deploy.local.dir}</url>
+        </snapshotRepository>
+      </distributionManagement>
+    </profile>
+
   </profiles>
 </project>
