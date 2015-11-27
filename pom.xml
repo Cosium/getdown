@@ -139,6 +139,61 @@
         <configuration>
           <quiet>true</quiet>
           <show>public</show>
+          <additionalparam>-Xdoclint:all -Xdoclint:-missing</additionalparam>
+        </configuration>
+      </plugin>
+
+      <plugin>
+        <groupId>com.github.wvengen</groupId>
+        <artifactId>proguard-maven-plugin</artifactId>
+        <version>2.0.8</version>
+        <executions>
+         <execution>
+           <phase>package</phase>
+           <goals><goal>proguard</goal></goals>
+         </execution>
+        </executions>
+        <dependencies>
+          <dependency>
+            <groupId>net.sf.proguard</groupId>
+            <artifactId>proguard-base</artifactId>
+            <version>5.1</version>
+            <scope>runtime</scope>
+          </dependency>
+        </dependencies>
+        <configuration>
+          <proguardVersion>5.1</proguardVersion>
+          <outputDirectory>${project.build.directory}</outputDirectory>
+          <outjar>${project.build.finalName}.jar</outjar>
+          <injar>${project.build.finalName}.jar</injar>
+          <assembly>
+            <inclusions>
+              <inclusion>
+                <groupId>com.samskivert</groupId>
+                <artifactId>samskivert</artifactId>
+                <filter>!**/Log4JLogger*,!**/*.java,com/samskivert/Log.class,**/samskivert/io/**,
+                        **/samskivert/swing/**,**/samskivert/text/**,**/samskivert/util/**</filter>
+              </inclusion>
+              <inclusion>
+                <groupId>jregistrykey</groupId>
+                <artifactId>jregistrykey</artifactId>
+              </inclusion>
+              <inclusion>
+                <groupId>commons-codec</groupId>
+                <artifactId>commons-codec</artifactId>
+              </inclusion>
+            </inclusions>
+          </assembly>
+          <obfuscate>true</obfuscate>
+          <options>
+            <option>-keep public class com.threerings.getdown.** { *; }</option>
+            <option>-keep public class ca.beq.util.win32.registry.** { *; }</option>
+            <option>-keepattributes Exceptions, InnerClasses, Signature</option>
+          </options>
+          <libs>
+            <lib>${rt.jar.path}</lib>
+          </libs>
+          <addMavenDescriptor>false</addMavenDescriptor>
         </configuration>
       </plugin>
 
