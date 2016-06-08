@@ -1,7 +1,7 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2014 Three Rings Design, Inc.
-// https://raw.github.com/threerings/getdown/master/LICENSE
+// Copyright (C) 2004-2016 Getdown authors
+// https://github.com/threerings/getdown/blob/master/LICENSE
 
 package com.threerings.getdown.data;
 
@@ -56,6 +56,9 @@ public class Application
 
     /** Suffix used for control file signatures. */
     public static final String SIGNATURE_SUFFIX = ".sig";
+
+    /** A special classname that means 'use -jar code.jar' instead of a classname. */
+    public static final String MANIFEST_CLASS = "manifest";
 
     /** Used to communicate information about the UI displayed when updating the application. */
     public static class UpdateInterface
@@ -528,10 +531,10 @@ public class Application
             }
         }
 
-        String prefix = StringUtil.isBlank(_appid) ? "" : (_appid + ".");
+        String appPrefix = StringUtil.isBlank(_appid) ? "" : (_appid + ".");
 
         // determine our application class name
-        _class = (String)cdata.get(prefix + "class");
+        _class = (String)cdata.get(appPrefix + "class");
         if (_class == null) {
             throw new IOException("m.missing_class");
         }
@@ -622,18 +625,16 @@ public class Application
             _auxgroups.put(auxgroup, new AuxGroup(auxgroup, codes, rsrcs));
         }
 
-        // transfer our JVM arguments
+        // transfer our JVM arguments (we include both "global" args and app_id-prefixed args)
         String[] jvmargs = ConfigUtil.getMultiValue(cdata, "jvmarg");
-        if (jvmargs != null) {
-            for (String jvmarg : jvmargs) {
-                _jvmargs.add(jvmarg);
-            }
+        addAll(jvmargs, _jvmargs);
+        if (appPrefix.length() > 0) {
+            jvmargs = ConfigUtil.getMultiValue(cdata, appPrefix + "jvmarg");
+            addAll(jvmargs, _jvmargs);
         }
 
         // Add the launch specific JVM arguments
-        for (String arg : _extraJvmArgs) {
-            _jvmargs.add(arg);
-        }
+        addAll(_extraJvmArgs, _jvmargs);
 
         // If we are headless, the target application should be headless
         if(GraphicsEnvironment.isHeadless()) {
@@ -644,17 +645,11 @@ public class Application
         _optimumJvmArgs = ConfigUtil.getMultiValue(cdata, "optimum_jvmarg");
 
         // transfer our application arguments
-        String[] appargs = ConfigUtil.getMultiValue(cdata, prefix + "apparg");
-        if (appargs != null) {
-            for (String apparg : appargs) {
-                _appargs.add(apparg);
-            }
-        }
+        String[] appargs = ConfigUtil.getMultiValue(cdata, appPrefix + "apparg");
+        addAll(appargs, _appargs);
 
         // add the launch specific application arguments
-        for (String arg : _extraAppArgs) {
-            _appargs.add(arg);
-        }
+        addAll(_extraAppArgs, _appargs);
 
         // look for custom arguments
         fillAssignmentListFromPairs("extra.txt", _txtJvmArgs);
@@ -902,7 +897,15 @@ public class Application
     public Process createProcess (boolean optimum)
         throws IOException
     {
-        // create our classpath
+        ArrayList<String> args = new ArrayList<String>();
+
+        // reconstruct the path to the JVM
+        args.add(LaunchUtil.getJVMPath(_appdir, _windebug || optimum));
+
+        // check whether we're using -jar mode or -classpath mode
+        boolean dashJarMode = MANIFEST_CLASS.equals(_class);
+
+        // add the -classpath arguments if we're not in -jar mode
         StringBuilder cpbuf = new StringBuilder();
         for (Resource rsrc : getActiveCodeResources()) {
             if (cpbuf.length() > 0) {
@@ -910,15 +913,10 @@ public class Application
             }
             cpbuf.append(rsrc.getFinalTarget().getAbsolutePath());
         }
-
-        ArrayList<String> args = new ArrayList<String>();
-
-        // reconstruct the path to the JVM
-        args.add(LaunchUtil.getJVMPath(_appdir, _windebug || optimum));
-
-        // add the classpath arguments
-        args.add("-classpath");
-        args.add(cpbuf.toString());
+        if (!dashJarMode) {
+            args.add("-classpath");
+            args.add(cpbuf.toString());
+        }
 
         // we love our Mac users, so we do nice things to preserve our application identity
         if (RunAnywhere.isMacOS()) {
@@ -931,6 +929,8 @@ public class Application
         if ((proxyHost = System.getProperty("http.proxyHost")) != null) {
             args.add("-Dhttp.proxyHost=" + proxyHost);
             args.add("-Dhttp.proxyPort=" + System.getProperty("http.proxyPort"));
+            args.add("-Dhttps.proxyHost=" + proxyHost);
+            args.add("-Dhttps.proxyPort=" + System.getProperty("http.proxyPort"));
         }
 
         // add the marker indicating the app is running in getdown
@@ -962,8 +962,13 @@ public class Application
             args.add(processArg(string));
         }
 
-        // add the application class name
-        args.add(_class);
+        // if we're in -jar mode add those arguments, otherwise add the app class name
+        if (dashJarMode) {
+            args.add("-jar");
+            args.add(cpbuf.toString());
+        } else {
+            args.add(_class);
+        }
 
         // finally add the application arguments
         for (String string : _appargs) {
@@ -1027,6 +1032,10 @@ public class Application
                 return perms;
             }
         };
+        Thread.currentThread().setContextClassLoader(loader);
+
+        log.info("Configured URL class loader:");
+        for (URL url : jars) log.info("  " + url);
 
         // configure any system properties that we can
         for (String jvmarg : _jvmargs) {
@@ -1058,16 +1067,22 @@ public class Application
         // make a note that we're running in "applet" mode
         System.setProperty("applet", "true");
 
+        // prepare our app arguments
+        String[] args = new String[_appargs.size()];
+        for (int ii = 0; ii < args.length; ii++) args[ii] = processArg(_appargs.get(ii));
+
         try {
+            log.info("Loading " + _class);
             Class<?> appclass = loader.loadClass(_class);
-            String[] args = _appargs.toArray(new String[_appargs.size()]);
             Method main;
             try {
                 // first see if the class has a special applet-aware main
                 main = appclass.getMethod("main", JApplet.class, SA_PROTO.getClass());
+                log.info("Invoking main(JApplet, {" + StringUtil.join(args, ", ") + "})");
                 main.invoke(null, new Object[] { applet, args });
             } catch (NoSuchMethodException nsme) {
                 main = appclass.getMethod("main", SA_PROTO.getClass());
+                log.info("Invoking main({" + StringUtil.join(args, ", ") + "})");
                 main.invoke(null, new Object[] { args });
             }
         } catch (Exception e) {
@@ -1080,6 +1095,21 @@ public class Application
     {
         arg = arg.replace("%APPDIR%", _appdir.getAbsolutePath());
         arg = arg.replace("%VERSION%", String.valueOf(_version));
+
+        // if this argument contains %ENV.FOO% replace those with the associated values looked up
+        // from the environment
+        if (arg.contains(ENV_VAR_PREFIX)) {
+            StringBuffer sb = new StringBuffer();
+            Matcher matcher = ENV_VAR_PATTERN.matcher(arg);
+            while (matcher.find()) {
+                String varName = matcher.group(1), varValue = System.getenv(varName);
+                if (varName == null) varName = "MISSING:" + varName;
+                matcher.appendReplacement(sb, varValue);
+            }
+            matcher.appendTail(sb);
+            arg = sb.toString();
+        }
+
         return arg;
     }
 
@@ -1212,41 +1242,44 @@ public class Application
      * that do not exist or fail the verification process will be returned. If all resources are
      * ready to go, null will be returned and the application is considered ready to run.
      *
+     * @param obs a progress observer that will be notified of verification progress. NOTE: this
+     * observer may be called from arbitrary threads, so if you update a UI based on calls to it,
+     * you have to take care to get back to your UI thread.
      * @param alreadyValid if non-null a 1 element array that will have the number of "already
      * validated" resources filled in.
      * @param unpacked a set to populate with unpacked resources.
      */
-    public List<Resource> verifyResources (
-        ProgressObserver obs, int[] alreadyValid, Set<Resource> unpacked)
-            throws InterruptedException
+    public List<Resource> verifyResources (ProgressObserver obs, int[] alreadyValid,
+                                           Set<Resource> unpacked) throws InterruptedException
     {
         List<Resource> rsrcs = getAllActiveResources();
         List<Resource> failures = new ArrayList<Resource>();
 
-        // total up the file size of the resources to validate
-        long totalSize = 0L;
-        for (Resource rsrc : rsrcs) {
-            totalSize += rsrc.getLocal().length();
+        // obtain the sizes of the resources to validate
+        long[] sizes = new long[rsrcs.size()];
+        for (int ii = 0; ii < sizes.length; ii++) {
+            sizes[ii] = rsrcs.get(ii).getLocal().length();
         }
 
-        MetaProgressObserver mpobs = new MetaProgressObserver(obs, totalSize);
+        ProgressAggregator pagg = new ProgressAggregator(obs, sizes);
         boolean noUnpack = SysProps.noUnpack();
-        for (Resource rsrc : rsrcs) {
+        for (int ii = 0; ii < sizes.length; ii++) {
+            Resource rsrc = rsrcs.get(ii);
             if (Thread.interrupted()) {
                 throw new InterruptedException("m.applet_stopped");
             }
-            mpobs.startElement(rsrc.getLocal().length());
 
+            ProgressObserver robs = pagg.startElement(ii);
             if (rsrc.isMarkedValid()) {
                 if (alreadyValid != null) {
                     alreadyValid[0]++;
                 }
-                mpobs.progress(100);
+                robs.progress(100);
                 continue;
             }
 
             try {
-                if (_digest.validateResource(rsrc, mpobs)) {
+                if (_digest.validateResource(rsrc, robs)) {
                     // unpack this resource if appropriate
                     if (noUnpack || !rsrc.shouldUnpack()) {
                         // finally note that this resource is kosher
@@ -1266,7 +1299,7 @@ public class Application
                     "rsrc", rsrc, "error", e);
 
             } finally {
-                mpobs.progress(100);
+                robs.progress(100);
             }
             failures.add(rsrc);
         }
@@ -1284,27 +1317,31 @@ public class Application
     {
         List<Resource> rsrcs = getActiveResources();
 
-        // total up the file size of the resources to unpack
-        long totalSize = 0L;
+        // remove resources that we don't want to unpack
         for (Iterator<Resource> it = rsrcs.iterator(); it.hasNext(); ) {
             Resource rsrc = it.next();
-            if (rsrc.shouldUnpack() && !unpacked.contains(rsrc)) {
-                totalSize += rsrc.getLocal().length();
-            } else {
+            if (!rsrc.shouldUnpack() || unpacked.contains(rsrc)) {
                 it.remove();
             }
         }
 
-        MetaProgressObserver mpobs = new MetaProgressObserver(obs, totalSize);
-        for (Resource rsrc : rsrcs) {
+        // obtain the sizes of the resources to unpack
+        long[] sizes = new long[rsrcs.size()];
+        for (int ii = 0; ii < sizes.length; ii++) {
+            sizes[ii] = rsrcs.get(ii).getLocal().length();
+        }
+
+        ProgressAggregator pagg = new ProgressAggregator(obs, sizes);
+        for (int ii = 0; ii < sizes.length; ii++) {
             if (Thread.interrupted()) {
                 throw new InterruptedException("m.applet_stopped");
             }
-            mpobs.startElement(rsrc.getLocal().length());
+            Resource rsrc = rsrcs.get(ii);
+            ProgressObserver pobs = pagg.startElement(ii);
             if (!rsrc.unpack()) {
                 log.info("Failure unpacking resource", "rsrc", rsrc);
             }
-            mpobs.progress(100);
+            pobs.progress(100);
         }
     }
 
@@ -1573,6 +1610,15 @@ public class Application
         return (rect == null) ? def : rect;
     }
 
+    /** Helper function to add all values in {@code values} (if non-null) to {@code target}. */
+    protected static void addAll (String[] values, List<String> target) {
+        if (values != null) {
+            for (String value : values) {
+                target.add(value);
+            }
+        }
+    }
+
     /**
      * Make an immutable List from the specified int array.
      */
@@ -1764,4 +1810,7 @@ public class Application
     protected FileChannel _lockChannel;
 
     protected static final String[] SA_PROTO = ArrayUtil.EMPTY_STRING;
+
+    protected static final String ENV_VAR_PREFIX = "%ENV.";
+    protected static final Pattern ENV_VAR_PATTERN = Pattern.compile("%ENV\\.(.*?)%");
 }

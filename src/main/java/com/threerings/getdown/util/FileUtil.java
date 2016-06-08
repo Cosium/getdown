@@ -1,7 +1,7 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2014 Three Rings Design, Inc.
-// https://raw.github.com/threerings/getdown/master/LICENSE
+// Copyright (C) 2004-2016 Getdown authors
+// https://github.com/threerings/getdown/blob/master/LICENSE
 
 package com.threerings.getdown.util;
 
@@ -38,19 +38,15 @@ public class FileUtil extends com.samskivert.util.FileUtil
         // place and then delete the old file
         if (dest.exists()) {
             File temp = new File(dest.getPath() + "_old");
-            if (temp.exists()) {
-                if (!temp.delete()) {
-                    log.warning("Failed to delete old intermediate file " + temp + ".");
-                    // the subsequent code will probably fail
-                }
+            if (temp.exists() && !temp.delete()) {
+                log.warning("Failed to delete old intermediate file " + temp + ".");
+                // the subsequent code will probably fail
             }
-            if (dest.renameTo(temp)) {
-                if (source.renameTo(dest)) {
-                    if (!temp.delete()) {
-                        log.warning("Failed to delete intermediate file " + temp + ".");
-                    }
-                    return true;
+            if (dest.renameTo(temp) && source.renameTo(dest)) {
+                if (!temp.delete()) {
+                    log.warning("Failed to delete intermediate file " + temp + ".");
                 }
+                return true;
             }
         }
 

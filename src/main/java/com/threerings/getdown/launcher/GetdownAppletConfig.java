@@ -1,7 +1,7 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2014 Three Rings Design, Inc.
-// https://raw.github.com/threerings/getdown/master/LICENSE
+// Copyright (C) 2004-2016 Getdown authors
+// https://github.com/threerings/getdown/blob/master/LICENSE
 
 package com.threerings.getdown.launcher;
 
@@ -343,10 +343,8 @@ public class GetdownAppletConfig
     protected void ensureAppdirExists () throws Exception
     {
         // if our application directory does not exist, auto-create it
-        if (!appdir.exists() || !appdir.isDirectory()) {
-            if (!appdir.mkdirs()) {
-                throw new Exception("m.create_appdir_failed");
-            }
+        if ((!appdir.exists() || !appdir.isDirectory()) && !appdir.mkdirs()) {
+            throw new Exception("m.create_appdir_failed");
         }
     }
 

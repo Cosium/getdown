@@ -1,7 +1,7 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2014 Three Rings Design, Inc.
-// https://raw.github.com/threerings/getdown/master/LICENSE
+// Copyright (C) 2004-2016 Getdown authors
+// https://github.com/threerings/getdown/blob/master/LICENSE
 
 package com.threerings.getdown.data;
 
@@ -141,10 +141,8 @@ public class Resource
      */
     public void clearMarker ()
     {
-        if (_marker.exists()) {
-            if (!_marker.delete()) {
-                log.warning("Failed to erase marker file '" + _marker + "'.");
-            }
+        if (_marker.exists() && !_marker.delete()) {
+            log.warning("Failed to erase marker file '" + _marker + "'.");
         }
     }
 
@@ -178,10 +176,8 @@ public class Resource
     public void erase ()
     {
         clearMarker();
-        if (_local.exists()) {
-            if (!_local.delete()) {
-                log.warning("Failed to erase resource '" + _local + "'.");
-            }
+        if (_local.exists() && !_local.delete()) {
+            log.warning("Failed to erase resource '" + _local + "'.");
         }
     }
 

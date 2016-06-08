@@ -1,7 +1,7 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2014 Three Rings Design, Inc.
-// https://raw.github.com/threerings/getdown/master/LICENSE
+// Copyright (C) 2004-2016 Getdown authors
+// https://github.com/threerings/getdown/blob/master/LICENSE
 
 package com.threerings.getdown.net;
 
@@ -113,10 +113,8 @@ public abstract class Downloader extends Thread
 
             // finally report our download completion if we did not already do so when downloading
             // our final resource
-            if (_obs != null && !_complete) {
-                if (!_obs.downloadProgress(100, 0)) {
-                    return false;
-                }
+            if (_obs != null && !_complete && !_obs.downloadProgress(100, 0)) {
+                return false;
             }
 
         } catch (DownloadAbortedException e) {
@@ -154,11 +152,9 @@ public abstract class Downloader extends Thread
     {
         // make sure the resource's target directory exists
         File parent = new File(rsrc.getLocal().getParent());
-        if (!parent.exists()) {
-            if (!parent.mkdirs()) {
-                log.warning("Failed to create target directory for resource '" + rsrc + "'. " +
-                            "Download will certainly fail.");
-            }
+        if (!parent.exists() && !parent.mkdirs()) {
+            log.warning("Failed to create target directory for resource '" + rsrc + "'. " +
+                    "Download will certainly fail.");
         }
         doDownload(rsrc);
     }

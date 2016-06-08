@@ -22,9 +22,8 @@ The main design and operation of Getdown is detailed on the
 
 ## Where can I see it in action?
 
-Getdown was originally written by developers at [OOO](http://www.threerings.net/) for the
-deployment of their Java-based massively multiplayer games. Try out any of the following games to
-see it in action:
+Getdown was originally written by developers at [OOO] for the deployment of their Java-based
+massively multiplayer games. Try out any of the following games to see it in action:
 
   * [Puzzle Pirates](http://www.puzzlepirates.com/) - OOO
   * [Bang! Howdy](http://banghowdy.com) - OOO
@@ -44,8 +43,8 @@ applications.
 The latest version of Getdown can be obtained thusly:
 
   * Download the pre-built jar file from Maven Central:
-    [getdown-1.4.jar](http://repo2.maven.org/maven2/com/threerings/getdown/1.4/getdown-1.4.jar)
-  * Obtain the jar artifact via Maven with the following identifier: `com.threerings:getdown:1.4`.
+    [getdown-1.5.jar](http://repo2.maven.org/maven2/com/threerings/getdown/1.5/getdown-1.5.jar)
+  * Obtain the jar artifact via Maven with the following identifier: `com.threerings:getdown:1.5`.
   * [Check out the code](https://github.com/threerings/getdown) and build it yourself.
 
 You can also:
@@ -73,3 +72,4 @@ Feel free to pop over to the [OOO Libs Google Group] to ask questions and get (a
 [OOO Libs Google group]: http://groups.google.com/group/ooo-libs
 [source code]: https://github.com/threerings/getdown/tree/master/src/main/java/com/threerings/getdown/launcher
 [javadoc documentation]: https://threerings.github.com/getdown/apidocs/
+[OOO]: https://en.wikipedia.org/wiki/Three_Rings_Design

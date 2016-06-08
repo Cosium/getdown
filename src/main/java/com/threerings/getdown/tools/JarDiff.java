@@ -1,10 +1,10 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2014 Three Rings Design, Inc.
-// https://raw.github.com/threerings/getdown/master/LICENSE
+// Copyright (C) 2004-2016 Getdown authors
+// https://github.com/threerings/getdown/blob/master/LICENSE
 
 /*
- * @(#)JarDiff.java	1.7 05/11/17
+ * @(#)JarDiff.java 1.7 05/11/17
  *
  * Copyright (c) 2006 Sun Microsystems, Inc. All Rights Reserved.
  *
@@ -168,9 +168,8 @@ public class JarDiff implements JarDiffCodes
             if (_debug) {
                 //DEBUG:  print out moved map
                 System.out.println("MOVED MAP!!!");
-                for (String newName : moved.keySet()) {
-                    String oldName = moved.get(newName);
-                    System.out.println("key is " + newName + " value is " + oldName);
+                for (Map.Entry<String,String> entry : moved.entrySet()) {
+                    System.out.println(entry);
                 }
 
                 //DEBUG:  print out IMOVE map

@@ -1,7 +1,7 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2014 Three Rings Design, Inc.
-// https://raw.github.com/threerings/getdown/master/LICENSE
+// Copyright (C) 2004-2016 Getdown authors
+// https://github.com/threerings/getdown/blob/master/LICENSE
 
 package com.threerings.getdown.launcher;
 
@@ -39,6 +39,7 @@ import java.net.URLConnection;
 import java.security.cert.Certificate;
 
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
@@ -68,7 +69,7 @@ import com.threerings.getdown.tools.Patcher;
 import com.threerings.getdown.util.ConfigUtil;
 import com.threerings.getdown.util.ConnectionUtil;
 import com.threerings.getdown.util.LaunchUtil;
-import com.threerings.getdown.util.MetaProgressObserver;
+import com.threerings.getdown.util.ProgressAggregator;
 import com.threerings.getdown.util.ProgressObserver;
 import com.threerings.getdown.util.VersionUtil;
 
@@ -133,10 +134,10 @@ public abstract class Getdown extends Thread
     {
         try {
             _ifc = _app.init(true);
-            createInterface(true);
+            createInterfaceAsync(true);
         } catch (Exception e) {
             log.warning("Failed to preinit: " + e);
-            createInterface(true);
+            createInterfaceAsync(true);
         }
     }
 
@@ -344,8 +345,10 @@ public abstract class Getdown extends Thread
     {
         if (!StringUtil.isBlank(host)) {
             System.setProperty("http.proxyHost", host);
+            System.setProperty("https.proxyHost", host);
             if (!StringUtil.isBlank(port)) {
                 System.setProperty("http.proxyPort", port);
+                System.setProperty("https.proxyPort", port);
             }
             log.info("Using proxy", "host", host, "port", port);
         }
@@ -371,7 +374,7 @@ public abstract class Getdown extends Thread
                 // and re-initalize
                 _ifc = _app.init(true);
                 // now force our UI to be recreated with the updated info
-                createInterface(true);
+                createInterfaceAsync(true);
             }
             if (!_app.lockForUpdates()) {
                 throw new MultipleGetdownRunning();
@@ -427,7 +430,7 @@ public abstract class Getdown extends Thread
 
                 // make sure we have the desired version and that the metadata files are valid...
                 setStep(Step.VERIFY_METADATA);
-                setStatus("m.validating", -1, -1L, false);
+                setStatusAsync("m.validating", -1, -1L, false);
                 if (_app.verifyMetadata(this)) {
                     log.info("Application requires update.");
                     update();
@@ -437,7 +440,7 @@ public abstract class Getdown extends Thread
 
                 // now verify our resources...
                 setStep(Step.VERIFY_RESOURCES);
-                setStatus("m.validating", -1, -1L, false);
+                setStatusAsync("m.validating", -1, -1L, false);
                 List<Resource> failures = _app.verifyResources(_progobs, alreadyValid, unpacked);
                 if (failures == null) {
                     log.info("Resources verified.");
@@ -531,7 +534,7 @@ public abstract class Getdown extends Thread
     // documentation inherited from interface
     public void updateStatus (String message)
     {
-        setStatus(message, -1, -1L, true);
+        setStatusAsync(message, -1, -1L, true);
     }
 
     /**
@@ -647,7 +650,7 @@ public abstract class Getdown extends Thread
 
             // show the patch notes button, if applicable
             if (!StringUtil.isBlank(_ifc.patchNotesUrl)) {
-                createInterface(false);
+                createInterfaceAsync(false);
                 EventQueue.invokeLater(new Runnable() {
                     public void run () {
                         _patchNotes.setVisible(true);
@@ -663,13 +666,14 @@ public abstract class Getdown extends Thread
             setStep(Step.PATCH);
             updateStatus("m.patching");
 
-            // create a new ProgressObserver that divides the different patching phases
-            MetaProgressObserver mprog = new MetaProgressObserver(_progobs, list.size());
-            for (Resource prsrc : list) {
-                mprog.startElement(1);
+            long[] sizes = new long[list.size()];
+            Arrays.fill(sizes, 1L);
+            ProgressAggregator pragg = new ProgressAggregator(_progobs, sizes);
+            int ii = 0; for (Resource prsrc : list) {
+                ProgressObserver pobs = pragg.startElement(ii++);
                 try {
                     Patcher patcher = new Patcher();
-                    patcher.patch(prsrc.getLocal().getParentFile(), prsrc.getLocal(), mprog);
+                    patcher.patch(prsrc.getLocal().getParentFile(), prsrc.getLocal(), pobs);
                 } catch (Exception e) {
                     log.warning("Failed to apply patch", "prsrc", prsrc, e);
                 }
@@ -699,7 +703,7 @@ public abstract class Getdown extends Thread
         throws IOException, InterruptedException
     {
         // create our user interface
-        createInterface(false);
+        createInterfaceAsync(false);
 
         // create a downloader to download our resources
         Downloader.Observer obs = new Downloader.Observer() {
@@ -724,7 +728,7 @@ public abstract class Getdown extends Thread
                     // to check if this was the reason for aborting.
                     return false;
                 }
-                setStatus("m.downloading", stepToGlobalPercent(percent), remaining, true);
+                setStatusAsync("m.downloading", stepToGlobalPercent(percent), remaining, true);
                 if (percent > 0) {
                     reportTrackingEvent("progress", percent);
                 }
@@ -757,7 +761,7 @@ public abstract class Getdown extends Thread
     protected void launch ()
     {
         setStep(Step.LAUNCH);
-        setStatus("m.launching", stepToGlobalPercent(100), -1L, false);
+        setStatusAsync("m.launching", stepToGlobalPercent(100), -1L, false);
 
         try {
             if (invokeDirect()) {
@@ -832,8 +836,9 @@ public abstract class Getdown extends Thread
             }
 
             // pump the percent up to 100%
-            setStatus(null, 100, -1L, false);
+            setStatusAsync(null, 100, -1L, false);
             exit(0);
+
             if (_playAgain != null && _playAgain.isEnabled()) {
                 // wait a little time before showing the button
                 Timer timer = new Timer("playAgain", true);
@@ -852,11 +857,11 @@ public abstract class Getdown extends Thread
 
     /**
      * Creates our user interface, which we avoid doing unless we actually have to update
-     * something.
+     * something. NOTE: this happens on the next UI tick, not immediately.
      *
      * @param reinit - if the interface should be reinitialized if it already exists.
      */
-    protected void createInterface (final boolean reinit)
+    protected void createInterfaceAsync (final boolean reinit)
     {
         if (_silent || (_container != null && !reinit)) {
             return;
@@ -1001,7 +1006,7 @@ public abstract class Getdown extends Thread
     protected void fail (String message)
     {
         _dead = true;
-        setStatus(message, stepToGlobalPercent(0), -1L, true);
+        setStatusAsync(message, stepToGlobalPercent(0), -1L, true);
     }
 
     /**
@@ -1038,13 +1043,13 @@ public abstract class Getdown extends Thread
     }
 
     /**
-     * Update the status.
+     * Updates the status. NOTE: this happens on the next UI tick, not immediately.
      */
-    protected void setStatus (
-        final String message, final int percent, final long remaining, boolean createUI)
+    protected void setStatusAsync (final String message, final int percent, final long remaining,
+                                   boolean createUI)
     {
         if (_status == null && createUI) {
-            createInterface(false);
+            createInterfaceAsync(false);
         }
 
         EventQueue.invokeLater(new Runnable() {
@@ -1196,7 +1201,7 @@ public abstract class Getdown extends Thread
     /** Used to pass progress on to our user interface. */
     protected ProgressObserver _progobs = new ProgressObserver() {
         public void progress (int percent) {
-            setStatus(null, stepToGlobalPercent(percent), -1L, false);
+            setStatusAsync(null, stepToGlobalPercent(percent), -1L, false);
         }
     };
 

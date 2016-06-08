@@ -1,7 +1,7 @@
 //
 // Getdown - application installer, patcher and launcher
-// Copyright (C) 2004-2014 Three Rings Design, Inc.
-// https://raw.github.com/threerings/getdown/master/LICENSE
+// Copyright (C) 2004-2016 Getdown authors
+// https://github.com/threerings/getdown/blob/master/LICENSE
 
 package com.threerings.getdown.launcher;
 
@@ -132,6 +132,7 @@ public class GetdownApp
                     _frame.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
                     return _frame.getContentPane();
                 }
+
                 @Override
                 protected void showContainer () {
                     if (_frame != null) {
@@ -140,6 +141,7 @@ public class GetdownApp
                         _frame.setVisible(true);
                     }
                 }
+
                 @Override
                 protected void disposeContainer () {
                     if (_frame != null) {
@@ -147,6 +149,7 @@ public class GetdownApp
                         _frame = null;
                     }
                 }
+
                 @Override
                 protected void showDocument (String url) {
                     String[] cmdarray;
@@ -170,9 +173,16 @@ public class GetdownApp
                         log.warning("Failed to open browser.", "cmdarray", cmdarray, e);
                     }
                 }
+
                 @Override
                 protected void exit (int exitCode) {
-                    System.exit(exitCode);
+                    // if we're running the app in the same JVM, don't call System.exit, but do
+                    // make double sure that the download window is closed.
+                    if (invokeDirect()) {
+                        disposeContainer();
+                    } else {
+                        System.exit(exitCode);
+                    }
                 }
                 protected JFrame _frame;
             };
