@@ -10,7 +10,7 @@
   <groupId>com.threerings</groupId>
   <artifactId>getdown</artifactId>
   <packaging>jar</packaging>
-  <version>1.5.cos-fork.3</version>
+  <version>1.5.cos-fork.3-SNAPSHOT</version>
 
   <name>getdown</name>
   <description>An application installer and updater.</description>
@@ -43,7 +43,7 @@
     <connection>scm:git:git://github.com/Cosium/getdown.git</connection>
     <developerConnection>scm:git:git@github.com:Cosium/getdown.git</developerConnection>
     <url>https://github.com/Cosium/getdown</url>
-    <tag>getdown-1.5.cos-fork.3</tag>
+    <tag>HEAD</tag>
   </scm>
 
   <repositories>
